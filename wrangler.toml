@@ -1,0 +1,8 @@
+name = "sutaba-tracker"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sutaba-db"
+database_id = "XXX_REPLACE_WITH_REAL_ID_XXX"
