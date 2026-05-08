@@ -5,4 +5,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "sutaba-db"
-database_id = "XXX_REPLACE_WITH_REAL_ID_XXX"
+database_id = "d3506cb0-5234-4b3b-88f6-7b81408f26e3"
