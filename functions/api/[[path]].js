@@ -82,9 +82,12 @@ export async function onRequest(ctx) {
     if (path === "sync" && method === "POST") {
       const { pref_start = 1, pref_end = 47 } = await request.json();
       let totalNew = 0, totalUpdated = 0;
-      const seen = new Set();
+
       for (let pc = pref_start; pc <= pref_end; pc++) {
+        const prefStores = [];
         let start = 0;
+
+        // 1. 都道府県の全店舗を配列に集める
         while (true) {
           const apiUrl = `https://hn8madehag.execute-api.ap-northeast-1.amazonaws.com/prd-2019-08-21/storesearch?size=100&q.parser=structured&q=(and%20ver:10000%20record_type:1%20pref_code:${pc})&fq=(and%20data_type:%27prd%27)&sort=zip_code%20asc,store_id%20asc&start=${start}`;
           const res = await fetch(apiUrl, {
@@ -109,24 +112,39 @@ export async function onRequest(ctx) {
             const lng = parseFloat(f.longitude_jp || f.longitude || (f.location_jp ? f.location_jp.split(',')[1] : null));
             if (isNaN(lat) || isNaN(lng)) continue;
             const addr = f.address_5 || f.address_1 || "";
-            seen.add(sid);
-            const existing = await env.DB.prepare("SELECT store_id FROM stores WHERE store_id = ?").bind(sid).first();
-            if (existing) {
-              await env.DB.prepare(
-                "UPDATE stores SET name=?, pref_code=?, pref_name=?, address=?, lat=?, lng=?, status='active', last_seen_at=datetime('now') WHERE store_id=?"
-              ).bind(f.name || "", pc, PREF_NAMES[pc], addr, lat, lng, sid).run();
-              totalUpdated++;
-            } else {
-              await env.DB.prepare(
-                "INSERT INTO stores (store_id, name, pref_code, pref_name, address, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)"
-              ).bind(sid, f.name || "", pc, PREF_NAMES[pc], addr, lat, lng).run();
-              totalNew++;
-            }
+            prefStores.push({ sid, name: f.name || "", addr, lat, lng });
           }
           if (hits.length < 100) break;
           start += 100;
         }
+
+        if (prefStores.length === 0) continue;
+
+        // 2. 既存store_idを1回のSELECTで取得
+        const storeIds = prefStores.map(s => s.sid);
+        const placeholders = storeIds.map(() => '?').join(',');
+        const existing = await env.DB.prepare(`SELECT store_id FROM stores WHERE store_id IN (${placeholders})`).bind(...storeIds).all();
+        const existingSet = new Set(existing.results.map(r => r.store_id));
+
+        // 3. バルクINSERT（50件ずつ）
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
+          const batch = prefStores.slice(i, i + BATCH_SIZE);
+          const values = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))').join(',');
+          const params = batch.flatMap(s => [s.sid, s.name, pc, PREF_NAMES[pc], s.addr, s.lat, s.lng, 'active']);
+
+          await env.DB.prepare(
+            `INSERT OR REPLACE INTO stores (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at) VALUES ${values}`
+          ).bind(...params).run();
+
+          // カウント
+          batch.forEach(s => {
+            if (existingSet.has(s.sid)) totalUpdated++;
+            else totalNew++;
+          });
+        }
       }
+
       // 最後の範囲（pref_end=47）の時だけ同期日時を更新
       if (pref_end === 47) {
         await env.DB.prepare("INSERT INTO sync_meta (key, value) VALUES ('last_synced_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
