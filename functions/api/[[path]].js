@@ -126,8 +126,8 @@ export async function onRequest(ctx) {
         const existing = await env.DB.prepare(`SELECT store_id FROM stores WHERE store_id IN (${placeholders})`).bind(...storeIds).all();
         const existingSet = new Set(existing.results.map(r => r.store_id));
 
-        // 3. バルクINSERT（50件ずつ）
-        const BATCH_SIZE = 50;
+        // 3. バルクINSERT（25件ずつ）
+        const BATCH_SIZE = 25;
         for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
           const batch = prefStores.slice(i, i + BATCH_SIZE);
           const values = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))').join(',');
