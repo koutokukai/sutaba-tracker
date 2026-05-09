@@ -82,8 +82,14 @@ export async function onRequest(ctx) {
     if (path === "sync" && method === "POST") {
       const { pref_start = 1, pref_end = 47 } = await request.json();
       let totalProcessed = 0;
+      const today = new Date().toISOString().slice(0, 10);
 
       for (let pc = pref_start; pc <= pref_end; pc++) {
+        // 0. この都道府県の既存activeな店舗を取得
+        const existingStores = await env.DB.prepare("SELECT store_id, name FROM stores WHERE pref_code = ? AND status = 'active'").bind(pc).all();
+        const existingSet = new Set(existingStores.results.map(s => s.store_id));
+        const existingMap = new Map(existingStores.results.map(s => [s.store_id, s.name]));
+
         const prefStores = [];
         let start = 0;
 
@@ -118,12 +124,10 @@ export async function onRequest(ctx) {
           start += 100;
         }
 
-        if (prefStores.length === 0) continue;
+        const foundSet = new Set(prefStores.map(s => s.sid));
 
-        // フィールド数: 10 (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at)
+        // 2. バルクINSERT + 新規店舗はhistoryに記録
         const BATCH_SIZE = 10;
-
-        // バルクINSERT（INSERT OR REPLACEで既存は自動上書き）
         for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
           const batch = prefStores.slice(i, i + BATCH_SIZE);
           const values = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))').join(',');
@@ -133,7 +137,22 @@ export async function onRequest(ctx) {
             `INSERT OR REPLACE INTO stores (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at) VALUES ${values}`
           ).bind(...params).run();
 
+          // 新規店舗をhistoryに記録
+          for (const s of batch) {
+            if (!existingSet.has(s.sid)) {
+              await env.DB.prepare("INSERT INTO store_history (store_id, store_name, event_type, event_date) VALUES (?, ?, 'open', ?)").bind(s.sid, s.name, today).run();
+            }
+          }
+
           totalProcessed += batch.length;
+        }
+
+        // 3. 閉店した店舗を検知してhistoryに記録
+        for (const [sid, name] of existingMap) {
+          if (!foundSet.has(sid)) {
+            await env.DB.prepare("UPDATE stores SET status = 'closed', last_seen_at = datetime('now') WHERE store_id = ?").bind(sid).run();
+            await env.DB.prepare("INSERT INTO store_history (store_id, store_name, event_type, event_date) VALUES (?, ?, 'close', ?)").bind(sid, name, today).run();
+          }
         }
       }
 
@@ -162,6 +181,12 @@ export async function onRequest(ctx) {
         await env.DB.prepare("INSERT INTO visits (group_id, store_id, visited_on) VALUES (?, ?, ?)").bind(gid, store_id, date).run();
         return json({ visited: true, visited_on: date });
       }
+    }
+
+    // ---- HISTORY ----
+    if (path === "history" && method === "GET") {
+      const r = await env.DB.prepare("SELECT * FROM store_history ORDER BY event_date DESC, id DESC LIMIT 200").all();
+      return json({ history: r.results });
     }
 
     return json({ error: "not_found" }, 404);

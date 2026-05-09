@@ -256,12 +256,47 @@ function ListView({ stores, visits, onToggle }) {
   );
 }
 
+// ---- 履歴ビュー ----
+function HistoryView({ history }) {
+  return (
+    <div style={{ padding: 12 }}>
+      <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>{history.length}件</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {history.map(h => {
+          const isOpen = h.event_type === 'open';
+          return (
+            <div key={h.id} style={{
+              display: "flex", alignItems: "center", padding: 10,
+              background: "#fff",
+              border: "1px solid #eee", borderRadius: 8
+            }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 4, marginRight: 10,
+                background: isOpen ? "#4caf50" : "#f44336",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontSize: 12, fontWeight: 700
+              }}>{isOpen ? "+" : "×"}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{h.store_name}</div>
+                <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                  {isOpen ? "🎉 開店" : "🏚 閉店"} - {h.event_date}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- メイン ----
 export default function App() {
   const [gid, setGid] = useState(localStorage.getItem("group_id") || null);
   const [tab, setTab] = useState("map");
   const [stores, setStores] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [history, setHistory] = useState([]);
   const [lastSync, setLastSync] = useState(null);
   const [loading, setLoading] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -270,9 +305,10 @@ export default function App() {
     if (!gid) return;
     setLoading(true);
     try {
-      const [sRes, vRes] = await Promise.all([api("stores"), api("visits")]);
+      const [sRes, vRes, hRes] = await Promise.all([api("stores"), api("visits"), api("history")]);
       setStores(sRes.stores || []);
       setVisits(vRes.visits || []);
+      setHistory(hRes.history || []);
       setLastSync(sRes.last_synced_at);
 
       // 自動同期: 24時間以上古い or nullの場合
@@ -295,9 +331,10 @@ export default function App() {
           });
         }
         // 同期後に再度データ取得
-        const [sRes2, vRes2] = await Promise.all([api("stores"), api("visits")]);
+        const [sRes2, vRes2, hRes2] = await Promise.all([api("stores"), api("visits"), api("history")]);
         setStores(sRes2.stores || []);
         setVisits(vRes2.visits || []);
+        setHistory(hRes2.history || []);
         setLastSync(sRes2.last_synced_at);
       }
     } catch (e) {
@@ -399,7 +436,7 @@ export default function App() {
       </header>
 
       <div style={{ display: "flex", background: "#fff", borderBottom: "1px solid #ddd", flexShrink: 0 }}>
-        {[["map", "🗺 地図"], ["list", "📋 一覧"]].map(([k, l]) => (
+        {[["map", "🗺 地図"], ["list", "📋 一覧"], ["history", "📅 履歴"]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             flex: 1, padding: 12, border: "none",
             background: tab === k ? "#006241" : "transparent",
@@ -419,8 +456,10 @@ export default function App() {
           </div>
         ) : tab === "map" ? (
           <MapView stores={stores} visits={visits} onToggle={requestToggle} />
-        ) : (
+        ) : tab === "list" ? (
           <ListView stores={stores} visits={visits} onToggle={requestToggle} />
+        ) : (
+          <HistoryView history={history} />
         )}
       </div>
 

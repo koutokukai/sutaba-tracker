@@ -31,3 +31,12 @@ CREATE TABLE IF NOT EXISTS sync_meta (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS store_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id INTEGER NOT NULL,
+  store_name TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  event_date TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
