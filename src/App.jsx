@@ -283,8 +283,23 @@ export default function App() {
     if (!window.confirm("公式から店舗データを同期します。1〜2分かかります。実行しますか？")) return;
     setLoading(true);
     try {
-      const r = await api("sync", { method: "POST" });
-      alert(`同期完了\n新規: ${r.new}件 / 更新: ${r.updated}件 / 閉店: ${r.closed}件`);
+      const ranges = [
+        { pref_start: 1, pref_end: 10 },
+        { pref_start: 11, pref_end: 20 },
+        { pref_start: 21, pref_end: 30 },
+        { pref_start: 31, pref_end: 40 },
+        { pref_start: 41, pref_end: 47 }
+      ];
+      let totalNew = 0, totalUpdated = 0;
+      for (const range of ranges) {
+        const r = await api("sync", {
+          method: "POST",
+          body: JSON.stringify(range)
+        });
+        totalNew += r.new;
+        totalUpdated += r.updated;
+      }
+      alert(`同期完了\n新規: ${totalNew}件 / 更新: ${totalUpdated}件`);
       await reload();
     } catch (e) {
       alert("同期失敗: " + e.message);

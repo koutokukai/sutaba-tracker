@@ -80,9 +80,10 @@ export async function onRequest(ctx) {
 
     // ---- SYNC（公式から取得） ----
     if (path === "sync" && method === "POST") {
+      const { pref_start = 1, pref_end = 47 } = await request.json();
       let totalNew = 0, totalUpdated = 0;
       const seen = new Set();
-      for (let pc = 1; pc <= 47; pc++) {
+      for (let pc = pref_start; pc <= pref_end; pc++) {
         let start = 0;
         while (true) {
           const apiUrl = `https://hn8madehag.execute-api.ap-northeast-1.amazonaws.com/prd-2019-08-21/storesearch?size=100&q.parser=structured&q=(and%20ver:10000%20record_type:1%20pref_code:${pc})&fq=(and%20data_type:%27prd%27)&sort=zip_code%20asc,store_id%20asc&start=${start}`;
@@ -125,18 +126,12 @@ export async function onRequest(ctx) {
           start += 100;
         }
       }
-      // 閉店マーク（今回見えなかった既存店舗）
-      const all = await env.DB.prepare("SELECT store_id FROM stores WHERE status = 'active'").all();
-      let closed = 0;
-      for (const r of all.results) {
-        if (!seen.has(r.store_id)) {
-          await env.DB.prepare("UPDATE stores SET status='closed' WHERE store_id=?").bind(r.store_id).run();
-          closed++;
-        }
+      // 最後の範囲（pref_end=47）の時だけ同期日時を更新
+      if (pref_end === 47) {
+        await env.DB.prepare("INSERT INTO sync_meta (key, value) VALUES ('last_synced_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+          .bind(new Date().toISOString()).run();
       }
-      await env.DB.prepare("INSERT INTO sync_meta (key, value) VALUES ('last_synced_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-        .bind(new Date().toISOString()).run();
-      return json({ ok: true, new: totalNew, updated: totalUpdated, closed });
+      return json({ ok: true, new: totalNew, updated: totalUpdated, pref_start, pref_end });
     }
 
     // ---- VISITS ----
