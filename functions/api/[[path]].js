@@ -121,8 +121,7 @@ export async function onRequest(ctx) {
         if (prefStores.length === 0) continue;
 
         // フィールド数: 10 (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at)
-        // バッチサイズ = Math.floor(999 / 10) - 1 = 98
-        const BATCH_SIZE = 98;
+        const BATCH_SIZE = 10;
 
         // バルクINSERT（INSERT OR REPLACEで既存は自動上書き）
         for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
