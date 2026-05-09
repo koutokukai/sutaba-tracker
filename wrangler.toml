@@ -1,4 +1,4 @@
-name = "sutaba-tracker"
+name = "sutaba-tracker-pages"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
