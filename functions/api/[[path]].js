@@ -105,20 +105,21 @@ export async function onRequest(ctx) {
             const f = hit.fields || {};
             const sid = parseInt(hit.id || f.store_id);
             if (!sid || isNaN(sid)) continue;
-            const lat = parseFloat(f.latitude);
-            const lng = parseFloat(f.longitude);
+            const lat = parseFloat(f.latitude_jp || f.latitude || (f.location_jp ? f.location_jp.split(',')[0] : null));
+            const lng = parseFloat(f.longitude_jp || f.longitude || (f.location_jp ? f.location_jp.split(',')[1] : null));
             if (isNaN(lat) || isNaN(lng)) continue;
+            const addr = f.address_5 || f.address_1 || "";
             seen.add(sid);
             const existing = await env.DB.prepare("SELECT store_id FROM stores WHERE store_id = ?").bind(sid).first();
             if (existing) {
               await env.DB.prepare(
                 "UPDATE stores SET name=?, pref_code=?, pref_name=?, address=?, lat=?, lng=?, status='active', last_seen_at=datetime('now') WHERE store_id=?"
-              ).bind(f.name || "", pc, PREF_NAMES[pc], f.address || "", lat, lng, sid).run();
+              ).bind(f.name || "", pc, PREF_NAMES[pc], addr, lat, lng, sid).run();
               totalUpdated++;
             } else {
               await env.DB.prepare(
                 "INSERT INTO stores (store_id, name, pref_code, pref_name, address, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)"
-              ).bind(sid, f.name || "", pc, PREF_NAMES[pc], f.address || "", lat, lng).run();
+              ).bind(sid, f.name || "", pc, PREF_NAMES[pc], addr, lat, lng).run();
               totalNew++;
             }
           }
