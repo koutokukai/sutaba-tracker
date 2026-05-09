@@ -167,7 +167,15 @@ function MapView({ stores, visits, onToggle }) {
     if (clusterRef.current) m.removeLayer(clusterRef.current);
     const visited = new Set(visits.map(v => v.store_id));
     const cluster = L.markerClusterGroup({
-      maxClusterRadius: 50, showCoverageOnHover: false, spiderfyOnMaxZoom: true
+      maxClusterRadius: 50, showCoverageOnHover: false, spiderfyOnMaxZoom: true,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        return L.divIcon({
+          html: `<div style="width:36px;height:36px;border-radius:50%;background:#1a3a2a;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px">${count}</div>`,
+          className: "sutaba-cluster",
+          iconSize: [36, 36]
+        });
+      }
     });
     stores.forEach(s => {
       const v = visited.has(s.store_id);
@@ -266,6 +274,32 @@ export default function App() {
       setStores(sRes.stores || []);
       setVisits(vRes.visits || []);
       setLastSync(sRes.last_synced_at);
+
+      // 自動同期: 24時間以上古い or nullの場合
+      const lastSyncDate = sRes.last_synced_at ? new Date(sRes.last_synced_at) : null;
+      const now = new Date();
+      const hoursSinceSync = lastSyncDate ? (now - lastSyncDate) / (1000 * 60 * 60) : Infinity;
+
+      if (hoursSinceSync >= 24) {
+        const ranges = [
+          { pref_start: 1, pref_end: 10 },
+          { pref_start: 11, pref_end: 20 },
+          { pref_start: 21, pref_end: 30 },
+          { pref_start: 31, pref_end: 40 },
+          { pref_start: 41, pref_end: 47 }
+        ];
+        for (const range of ranges) {
+          await api("sync", {
+            method: "POST",
+            body: JSON.stringify(range)
+          });
+        }
+        // 同期後に再度データ取得
+        const [sRes2, vRes2] = await Promise.all([api("stores"), api("visits")]);
+        setStores(sRes2.stores || []);
+        setVisits(vRes2.visits || []);
+        setLastSync(sRes2.last_synced_at);
+      }
     } catch (e) {
       if (String(e).includes("unauthorized")) logout();
     } finally { setLoading(false); }
