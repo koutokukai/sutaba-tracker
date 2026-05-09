@@ -81,7 +81,7 @@ export async function onRequest(ctx) {
     // ---- SYNC（公式から取得） ----
     if (path === "sync" && method === "POST") {
       const { pref_start = 1, pref_end = 47 } = await request.json();
-      let totalNew = 0, totalUpdated = 0;
+      let totalProcessed = 0;
 
       for (let pc = pref_start; pc <= pref_end; pc++) {
         const prefStores = [];
@@ -124,17 +124,7 @@ export async function onRequest(ctx) {
         // バッチサイズ = Math.floor(999 / 10) - 1 = 98
         const BATCH_SIZE = 98;
 
-        // 2. 既存store_idをバッチでSELECT
-        const existingSet = new Set();
-        for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
-          const batch = prefStores.slice(i, i + BATCH_SIZE);
-          const storeIds = batch.map(s => s.sid);
-          const placeholders = storeIds.map(() => '?').join(',');
-          const existing = await env.DB.prepare(`SELECT store_id FROM stores WHERE store_id IN (${placeholders})`).bind(...storeIds).all();
-          existing.results.forEach(r => existingSet.add(r.store_id));
-        }
-
-        // 3. バルクINSERT
+        // バルクINSERT（INSERT OR REPLACEで既存は自動上書き）
         for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
           const batch = prefStores.slice(i, i + BATCH_SIZE);
           const values = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))').join(',');
@@ -144,11 +134,7 @@ export async function onRequest(ctx) {
             `INSERT OR REPLACE INTO stores (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at) VALUES ${values}`
           ).bind(...params).run();
 
-          // カウント
-          batch.forEach(s => {
-            if (existingSet.has(s.sid)) totalUpdated++;
-            else totalNew++;
-          });
+          totalProcessed += batch.length;
         }
       }
 
@@ -157,7 +143,7 @@ export async function onRequest(ctx) {
         await env.DB.prepare("INSERT INTO sync_meta (key, value) VALUES ('last_synced_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
           .bind(new Date().toISOString()).run();
       }
-      return json({ ok: true, new: totalNew, updated: totalUpdated, pref_start, pref_end });
+      return json({ ok: true, processed: totalProcessed, pref_start, pref_end });
     }
 
     // ---- VISITS ----

@@ -290,16 +290,15 @@ export default function App() {
         { pref_start: 31, pref_end: 40 },
         { pref_start: 41, pref_end: 47 }
       ];
-      let totalNew = 0, totalUpdated = 0;
+      let totalProcessed = 0;
       for (const range of ranges) {
         const r = await api("sync", {
           method: "POST",
           body: JSON.stringify(range)
         });
-        totalNew += r.new;
-        totalUpdated += r.updated;
+        totalProcessed += r.processed;
       }
-      alert(`同期完了\n新規: ${totalNew}件 / 更新: ${totalUpdated}件`);
+      alert(`同期完了\n処理件数: ${totalProcessed}件`);
       await reload();
     } catch (e) {
       alert("同期失敗: " + e.message);
