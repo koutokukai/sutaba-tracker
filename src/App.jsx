@@ -280,7 +280,7 @@ export default function App() {
   };
 
   const sync = async () => {
-    if (!confirm("公式から店舗データを同期します。1〜2分かかります。実行しますか？")) return;
+    if (!window.confirm("公式から店舗データを同期します。1〜2分かかります。実行しますか？")) return;
     setLoading(true);
     try {
       const r = await api("sync", { method: "POST" });
