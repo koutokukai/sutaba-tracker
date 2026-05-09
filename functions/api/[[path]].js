@@ -120,14 +120,21 @@ export async function onRequest(ctx) {
 
         if (prefStores.length === 0) continue;
 
-        // 2. 既存store_idを1回のSELECTで取得
-        const storeIds = prefStores.map(s => s.sid);
-        const placeholders = storeIds.map(() => '?').join(',');
-        const existing = await env.DB.prepare(`SELECT store_id FROM stores WHERE store_id IN (${placeholders})`).bind(...storeIds).all();
-        const existingSet = new Set(existing.results.map(r => r.store_id));
+        // フィールド数: 10 (store_id, name, pref_code, pref_name, address, lat, lng, status, first_seen_at, last_seen_at)
+        // バッチサイズ = Math.floor(999 / 10) - 1 = 98
+        const BATCH_SIZE = 98;
 
-        // 3. バルクINSERT（25件ずつ）
-        const BATCH_SIZE = 25;
+        // 2. 既存store_idをバッチでSELECT
+        const existingSet = new Set();
+        for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
+          const batch = prefStores.slice(i, i + BATCH_SIZE);
+          const storeIds = batch.map(s => s.sid);
+          const placeholders = storeIds.map(() => '?').join(',');
+          const existing = await env.DB.prepare(`SELECT store_id FROM stores WHERE store_id IN (${placeholders})`).bind(...storeIds).all();
+          existing.results.forEach(r => existingSet.add(r.store_id));
+        }
+
+        // 3. バルクINSERT
         for (let i = 0; i < prefStores.length; i += BATCH_SIZE) {
           const batch = prefStores.slice(i, i + BATCH_SIZE);
           const values = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'), datetime(\'now\'))').join(',');
